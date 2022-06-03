@@ -1,0 +1,123 @@
+﻿@model string
+
+@{
+    ViewData["Title"] = "Диалог";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+    .msg {
+        position: absolute;
+        top: 60px;
+        bottom: 105px;
+        border: 1px solid black;
+        margin-bottom: auto;
+        display: block;
+        overflow: scroll;
+        width: 90%;
+        white-space: nowrap;
+    }
+</style>
+<div class="msg">
+    <div id="msgs">
+
+    </div>
+</div>
+
+<div style="position:absolute;height:20px;bottom:80px;display:block;width:85%;">
+    <input type="text" style="width:85%;" id="MessageField" placeholder="Напишите сообщение и нажмите Enter" />
+</div>
+
+@if (ViewBag.Page > 1)
+{
+    <a href="@Url.Action("Details", new { id = ViewBag.Id, page = ViewBag.Page - 1 })"
+       class="btn btn-default" style="position:absolute;bottom:65px;right:145px;">
+        &laquo; Пред.
+    </a>
+}
+@if (ViewBag.Page < ViewBag.MaxPage)
+{
+    <a href="@Url.Action("Details", new { id = ViewBag.Id, page = ViewBag.Page + 1 })"
+       class="btn btn-default" style="position:absolute;bottom:65px;right:70px;">
+        След. &raquo;
+    </a>
+}
+
+@section Scripts {
+    <script>
+        $(function () {
+            var msgDiv = document.getElementsByClassName("msg")[0];
+
+            var protocol = location.protocol == "https:" ? "wss:" : "ws:";
+            var wsUri = protocol + "//" + window.location.host + "/Players/Details" + "/@ViewBag.Id" + "/@ViewBag.Page" + "/ws";
+            socket = new WebSocket(wsUri, "@Model");
+            socket.onopen = e => {
+                console.log("socket opened", e);
+            };
+
+            socket.onclose = function (e) {
+                console.log("socket closed", e);
+            };
+
+            socket.onmessage = function (e) {
+                console.log(e);
+                var data = JSON.parse(e.data);
+                var state = data[0];
+                var id = data[1];
+                var message = data[2];
+                var read = data[3];
+                var from = data[4];
+                if (state == "new") {
+                    if (read == "true") {
+                        var style = "normal";
+                        var checked = " checked";
+                    } else {
+                        var style = "bold";
+                        var checked = "";
+                    }
+                    if (from == "false") {
+                        $("#msgs").append("<div style='font-weight:" + style + ";'>"
+                            + "<input type='checkbox' id='" + id + "' onchange='markAsRead(this)'" + checked + " />"
+                            + ' ' + message + "</div>");
+                    } else {
+                        $("#msgs").append("<div style='font-weight:" + style + ";'>"
+                            + "<input type='checkbox' id='" + id + "' onchange='markAsRead(this)'" + checked + " hidden />"
+                            + "&nbsp;&nbsp;&nbsp;&nbsp;" + message + "</div>");
+                    }
+                    msgDiv.scrollTop = msgDiv.scrollHeight;
+                } else {
+                    document.getElementById(id).parentNode.style = (read == "true")
+                        ? "font-weight:normal"
+                        : "font-weight:bold";
+                }
+            };
+
+            socket.onerror = function (e) {
+                console.error(e.data);
+            };
+
+            $("#MessageField").keypress(function (e) {
+                if (e.which != 13) {
+                    return;
+                }
+
+                e.preventDefault();
+
+                var message = $("#MessageField").val();
+                if (message != '') {
+                    var response = JSON.stringify(["new", "@User.Identity.Name", message, "false", "true"]);
+                    socket.send(response);
+                    $("#MessageField").val('');
+                }
+            });
+        });
+
+        function markAsRead(checkbox) {
+            var id = checkbox.id.toString();
+            var response = (checkbox.checked)
+                ? JSON.stringify(["update", id, "", "true", "true"])
+                : JSON.stringify(["update", id, "", "false", "true"]);
+            socket.send(response);
+        }
+    </script>
+}
